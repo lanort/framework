@@ -814,7 +814,27 @@ class Builder {
 	 */
 	public function orderBy($column, $direction = 'asc')
 	{
+		$direction = strtolower($direction) == 'asc' ? 'asc' : 'desc';
+
 		$this->orders[] = compact('column', 'direction');
+
+		return $this;
+	}
+
+	/**
+	 * Add a raw "order by" clause to the query.
+	 *
+	 * @param  string  $sql
+	 * @param  array  $bindings
+	 * @return \Illuminate\Database\Query\Builder|static
+	 */
+	public function orderByRaw($sql, $bindings = array())
+	{
+		$type = 'raw';
+
+		$this->orders[] = compact('type', 'sql');
+
+		$this->bindings = array_merge($this->bindings, $bindings);
 
 		return $this;
 	}
@@ -946,7 +966,7 @@ class Builder {
 	}
 
 	/**
-	 * Pluck a single column from the database.
+	 * Pluck a single column's value from the first result of a query.
 	 *
 	 * @param  string  $column
 	 * @return mixed
@@ -1072,6 +1092,30 @@ class Builder {
 		$me = $this;
 
 		return function() use ($me, $columns) { return $me->getFresh($columns); };
+	}
+
+	/**
+	 * Chunk the results of the query.
+	 *
+	 * @param  int  $count
+	 * @param  callable  $callback
+	 * @return void
+	 */
+	public function chunk($count, $callback)
+	{
+		$results = $this->forPage($page = 1, $count)->get();
+
+		while (count($results) > 0)
+		{
+			// On each chunk result set, we will pass them to the callback and then let the
+			// developer take care of everything within the callback, which allows us to
+			// keep the memory low for spinning through large result sets for working.
+			call_user_func($callback, $results);
+
+			$page++;
+
+			$results = $this->forPage($page, $count)->get();
+		}
 	}
 
 	/**
@@ -1212,7 +1256,7 @@ class Builder {
 		// Once we have the total number of records to be paginated, we can grab the
 		// current page and the result array. Then we are ready to create a brand
 		// new Paginator instances for the results which will create the links.
-		$page = $paginator->getCurrentPage();
+		$page = $paginator->getCurrentPage($total);
 
 		$results = $this->forPage($page, $perPage)->get($columns);
 
@@ -1542,11 +1586,13 @@ class Builder {
 	 * Set the bindings on the query builder.
 	 *
 	 * @param  array  $bindings
-	 * @return void
+	 * @return \Illuminate\Database\Query\Builder
 	 */
 	public function setBindings(array $bindings)
 	{
 		$this->bindings = $bindings;
+
+		return $this;
 	}
 
 	/**
